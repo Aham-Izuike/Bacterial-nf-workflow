@@ -2,12 +2,6 @@
 
 nextflow.enable.dsl=2
 
-// Define pipeline parameters (adjust as needed)
-params.reads = 'data/*.fastq.gz'      // Path to the input FASTQ files
-params.reference = 'reference.fasta'  // Reference genome
-params.threads = 4                    // Number of threads for processes
-params.outdir = 'results'             // Output directory
-
 workflow {
 
     // Ingest long-read data and prepare metadata
@@ -20,7 +14,7 @@ workflow {
     qc_report = qualityCheck(trimmed_reads)
 
     // Conditional logic: If reference is provided, align to it, else perform de novo assembly
-    if (params.reference) {
+    if (params.reference && params.reference !='') {
         alignments = alignReads(trimmed_reads)
         annotation = annotateReads(alignments)
     } else {
@@ -29,10 +23,10 @@ workflow {
     }
 
     // Output results
-    outputResults(annotation, qc_report)
+    outputResults(annotation, qc_report, assemblies)
 }
 
-// Process for ingesting data (replace with actual implementation)
+// Process for ingesting data (still to be replaced)
 process fastq_ingress {
     input:
     path params.reads
@@ -40,10 +34,13 @@ process fastq_ingress {
     tuple val(meta), path("*.fastq.gz")
 
     script:
+    for (file in params.reads) {
+        def meta = [ alias: file.baseName ] 
     """
-    # Metadata assignment and file preparation (dummy step)
-    cp $input ./reads.fastq.gz
+    # Metadata assignment and file preparation
+    cp ${file} ${meta.alias} .fastq.gz
     """
+    }
 }
 
 // Process for trimming long reads (NanoFilt)
@@ -61,7 +58,7 @@ process trimReads {
 }
 
 // process for De nove assembly of long reads
-process deNovoAssembly{
+process deNovoAssembly {
     input:
     tuple val(meta), path("*.trimmed.fastq.gz")
     output:
@@ -122,6 +119,7 @@ process annotateReads {
 process outputResults {
     input:
     tuple val(meta), path("prokka_results/*.gff"), path("qc_report/*.html")
+    path("${meta.alias}.assembly.fasta.gz", optional = true)
     output:
     path("${params.outdir}/")
     
@@ -130,5 +128,8 @@ process outputResults {
     mkdir -p ${params.outdir}/${meta.alias}
     mv prokka_results/* ${params.outdir}/${meta.alias}/
     mv qc_report/*.html ${params.outdir}/${meta.alias}/
+    if [ -f ${meta.alias}.assembly.fasta.gz]; then
+        mv ${meta.alias}.assembly.fasta.gz ${params.outdir}/${meta.alias}/
+    fi
     """
 }
